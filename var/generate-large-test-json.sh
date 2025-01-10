@@ -7,6 +7,7 @@ SQLITE_DB=mock.sqlite3
 SQLITE_TAGS_PER_FILE=5
 SQLITE_TAGS=(alpha bravo giraffe graphene bizzar tripple photo Mars Argentina)
 SQLITE_VALUES_NO=1000
+sql_fl=
 
 usage () {
   cat <<END
@@ -74,27 +75,28 @@ _init_sqlite_db() {
    CREATE INDEX idx_file_tag_value_id
    ON file_tag(value_id);
    ")
+
    #add records in tag and values tables
    for (( c=1; c<=$SQLITE_VALUES_NO; c++ )); do
-     sqlite3 $SQLITE_DB <<(echo "
+     printf >> $sql_fl "
      INSERT INTO value(id,name) 
      VALUES (
        $c,
        random()
       );
-      ")
+      "
     done
-    echo "$SQLITE_VALUES_NO values added"
 
     for  (( c=1; c<=${#SQLITE_TAGS[@]}; c++ )); do
-      sqlite3 $SQLITE_DB <<(echo "
+      printf >> $sql_fl "
         INSERT INTO tag(id,name) 
         VALUES (
           $c,
           '${SQLITE_TAGS[$c]}'
           );
-        ")
+        "
     done
+    echo "$SQLITE_VALUES_NO values added"
     echo "${#SQLITE_TAGS[@]} tags added"
 }
 
@@ -102,8 +104,7 @@ _mock_sqlite_record() {
   if [ ! -f  $SQLITE_DB ]; then
     _init_sqlite_db
   fi
-  sql_s="
-  BEGIN TRANSACTION;
+  printf >> $sql_fl "
   INSERT INTO file (id, directory, name, fingerprint,mod_time,create_time,size,is_dir)
   VALUES (
      $1,
@@ -118,8 +119,8 @@ _mock_sqlite_record() {
   for (( i=1; i<=$SQLITE_TAGS_PER_FILE; i++ )); do
     RND_T=$(( 1 + $RANDOM % ${#SQLITE_TAGS[@]} ))
     RND_V=$(( 1 + $RANDOM % $SQLITE_VALUES_NO ))
-    sql_s="${sql_s}
-      INSErt INto file_tag (file_id, tag_id, value_id)
+    printf >> $sql_fl "
+      INSERT INTO file_tag (file_id, tag_id, value_id)
       VALUES (
         $1,
         $RND_T,
@@ -127,21 +128,26 @@ _mock_sqlite_record() {
       );
     "
   done
-  sql_s="${sql_s}
-  COMMIT;"
-  sqlite3 $SQLITE_DB <<< "${sql_s}"
-
 }
 
 if [ ${#@} -lt 1 ]; then
   exit
 fi
 
-for (( fc=1; fc<=$COUNT; fc++ )); do
-  if [ $TYPE = 'json' ]; then
-    _mock_json_object
-  elif [ $TYPE = 'sqlite' ]; then
-    _mock_sqlite_record $fc
-  fi
-done
+if [ $TYPE = 'sqlite' ]; then
+  [ -z $sql_fl ] && sql_fl=`mktemp`
+  echo "$sql_fl"
+  printf >> $sql_fl "BEGIN TRANSACTION;\n"
 
+  for (( fc=1; fc<=$COUNT; fc++ )); do
+    _mock_sqlite_record $fc
+  done
+  printf >> $sql_fl "COMMIT TRANSACTION;\n"
+
+  echo "finish creating data file $sql_fl"
+  sqlite3 $SQLITE_DB <$sql_fl
+elif [ $TYPE = 'json' ]; then
+  for (( fc=1; fc<=$COUNT; fc++ )); do
+    _mock_json_object
+  done
+fi

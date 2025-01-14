@@ -1,7 +1,7 @@
 # sunduk
-local file storage indexing app
+file indexer and manager
 
-  *  CLI oriented
+  *  CLI interface, no GUI
   *  scriptable
-  *  database in plain JSON file
-  *  
+  *  database backend in SQLite
+  *  inspired by TMSU
